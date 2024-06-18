@@ -3,6 +3,7 @@
 body.wp-core-ui.js.toplevel_page_sc_cpt_meta {
   background: #000000;
 }
+
 /* Style for the select dropdown */
 form#sc-meta-fields-form {
   width: 30%;
@@ -36,7 +37,7 @@ background-color: #006799;
 
 /* Style for the meta fields checkboxes */
 #meta-fields {
-  margin-bottom: 30px;
+  margin-bottom: 15px;
   padding-left: 0px;
   color: #fff;
 }

@@ -19,14 +19,13 @@ function sc_display_admin_page() {
     ?>
     <style type="text/css"></style>
     <div class="wrap">
-        
         <form id="sc-meta-fields-form" method="post" action="">
             <?php wp_nonce_field('sc-meta-fields-nonce', 'sc-meta-fields-nonce'); ?>
             <select id="post_type" name="post_type" class="post_type_list">
                 <option value="">Select Post Type</option>
                 <?php
                 $post_types = get_post_types(array('public' => true), 'objects');
-                unset( $post_types['attachment'] );
+                unset($post_types['attachment']);
                 foreach ($post_types as $post_type) {
                     echo '<option value="' . esc_attr($post_type->name) . '">' . esc_html($post_type->label) . '</option>';
                 }
@@ -36,18 +35,17 @@ function sc_display_admin_page() {
             <div id="meta-fields" class="sc-meta-fields"></div>
             <input type="submit" name="submit" value="Set Meta Fields Column" class="sc-submit-button">
         </form>
-        
     </div>
     <?php
 }
 
-// Handle the AJAX request
+// Handle the AJAX request to get meta fields
 function sc_get_meta_fields() {
     if (isset($_POST['post_type'])) {
         $post_type = sanitize_text_field($_POST['post_type']);
+        $output = '';
 
-        if($post_type != 'page'){
-
+        if ($post_type != 'page') {
             $posts = get_posts(array('post_type' => $post_type, 'numberposts' => 1));
             if (!empty($posts)) {
                 $post_id = $posts[0]->ID;
@@ -56,106 +54,70 @@ function sc_get_meta_fields() {
                     // Define default WordPress meta keys
                     $default_meta_keys = array('_edit_lock', '_edit_last', '_thumbnail_id', '_wp_page_template', '_wp_old_slug', '_wp_trash_meta_status', '_wp_trash_meta_time');
 
-                    //$output = '<h2>List Of Meta Fields Of ' . ucfirst(esc_html($post_type)) . ' Post Type.</h2>';
-                    $output = '</br>';
                     foreach ($meta_keys as $meta_key) {
-                        // Check if the meta key is not a default WordPress meta key
                         if (!in_array($meta_key, $default_meta_keys)) {
                             $output .= '<input class="sc-meta-fields-checkbox" type="checkbox" name="meta_keys[]" value="' . esc_attr($meta_key) . '">' . esc_html(transform_meta_field_name($meta_key)) . '</br></br>';
                         }
                     }
-            
                 } else {
                     $output = '<p>No meta fields found for this post type.</p>';
                 }
             } else {
                 $output = '<p>No posts found for this post type.</p>';
             }
-        }else{
-            // Usage example
+        } else {
             $pages_custom_meta_fields = get_all_custom_meta_fields_for_pages();
-            //$output = '<h2>List Of Meta Fields Of ' . ucfirst(esc_html($post_type)) . ' Post Type.</h2>';
-            // Output the custom meta fields as input elements
-            $output = '</br>';
             foreach ($pages_custom_meta_fields as $page_id => $meta_fields) {
-                //echo '<h3>Page ID: ' . $page_id . '</h3>';
                 foreach ($meta_fields as $meta_key => $meta_value) {
                     $meta_value = is_array($meta_value) ? implode(', ', $meta_value) : $meta_value;
                     $output .= '<input class="sc-meta-fields-checkbox" type="checkbox" name="meta_keys[]" value="' . esc_attr($meta_key) . '">' . esc_html(transform_meta_field_name($meta_key)) . '</br></br>';
                 }
             }
-        
         }
         echo $output;
     }
     wp_die();
 }
-
 add_action('wp_ajax_sc_get_meta_fields', 'sc_get_meta_fields');
 add_action('wp_ajax_nopriv_sc_get_meta_fields', 'sc_get_meta_fields');
 
-
+// Get all custom meta fields for pages
 function get_all_custom_meta_fields_for_pages() {
-    // Get all pages
-    $pages = get_posts(array(
-        'post_type' => 'page',
-        'numberposts' => -1 // Retrieve all pages
-    ));
-  
-    // Initialize an array to store custom meta fields
+    $pages = get_posts(array('post_type' => 'page', 'numberposts' => -1));
     $all_custom_meta_fields = array();
-  
-    // Default meta keys to exclude
     $default_meta_keys = array('_edit_lock', '_edit_last', '_wp_page_template', '_wp_old_slug');
-  
-    // Loop through each page
+
     foreach ($pages as $page) {
-        // Get the meta fields for the current page
         $meta_fields = get_post_meta($page->ID);
-  
-        // Filter out default meta fields
         $custom_meta_fields = array_diff_key($meta_fields, array_flip($default_meta_keys));
-  
-        // Add the custom meta fields to the array
         if (!empty($custom_meta_fields)) {
             $all_custom_meta_fields[$page->ID] = $custom_meta_fields;
         }
     }
-  
     return $all_custom_meta_fields;
 }
-  
+
+// Handle form data via AJAX
 function sc_get_form_data() {
     check_ajax_referer('sc-meta-fields-nonce', 'nonce');
     
     if (isset($_POST['post_type'])) {
-
         $post_type = sanitize_text_field($_POST['post_type']);
-        if(isset($_POST['meta_keys'])){
-            $meta_keys = array_map('sanitize_text_field', $_POST['meta_keys']);
-        }
-        if(isset($_POST['uncheck_meta_keys'])){
-            $uncheck_meta_keys = array_map('sanitize_text_field', $_POST['uncheck_meta_keys']);
-        }
-        // Store the selected post type and meta keys in the options table
-        if (isset($meta_keys)){
-            update_option('sc_selected_post_type', $post_type);
-            update_option('sc_selected_meta_keys', $meta_keys);
-        }
+        $meta_keys = isset($_POST['meta_keys']) ? array_map('sanitize_text_field', $_POST['meta_keys']) : array();
+        $uncheck_meta_keys = isset($_POST['uncheck_meta_keys']) ? array_map('sanitize_text_field', $_POST['uncheck_meta_keys']) : array();
 
-        if(isset($uncheck_meta_keys)){
-            update_option('sc_selected_post_type', $post_type);
-            update_option('sc_unselected_meta_keys', $uncheck_meta_keys);
-        }
+        update_option('sc_selected_post_type', $post_type);
+        update_option('sc_selected_meta_keys', $meta_keys);
+        update_option('sc_unselected_meta_keys', $uncheck_meta_keys);
         
         echo json_encode(['status' => 'success', 'message' => 'Settings saved successfully.']);  
     }
     wp_die();
 }
-
 add_action('wp_ajax_sc_get_form_data', 'sc_get_form_data');
 add_action('wp_ajax_nopriv_sc_get_form_data', 'sc_get_form_data');
 
+// Add custom columns
 function add_custom_columns($columns) {
     $meta_keys = get_option('sc_selected_meta_keys');
     if ($meta_keys) {
@@ -166,6 +128,7 @@ function add_custom_columns($columns) {
     return $columns;
 }
 
+// Populate custom columns
 function populate_custom_columns($column, $post_id) {
     $meta_keys = get_option('sc_selected_meta_keys');
     if ($meta_keys && in_array($column, $meta_keys)) {
@@ -174,6 +137,7 @@ function populate_custom_columns($column, $post_id) {
     }
 }
 
+// Make custom columns sortable
 function make_custom_columns_sortable($columns) {
     $meta_keys = get_option('sc_selected_meta_keys');
     if ($meta_keys) {
@@ -184,6 +148,7 @@ function make_custom_columns_sortable($columns) {
     return $columns;
 }
 
+// Sort custom columns
 function custom_column_orderby($query) {
     if (!is_admin() || !$query->is_main_query()) {
         return;
@@ -198,7 +163,8 @@ function custom_column_orderby($query) {
     }
 }
 
-$post_type = get_option('sc_selected_post_type'); // Array of selected post types (post, page, book)
+// Add hooks for custom columns based on post type
+$post_type = get_option('sc_selected_post_type');
 $meta_keys = get_option('sc_selected_meta_keys');
 if ($post_type && $meta_keys) {
     add_filter("manage_{$post_type}_posts_columns", 'add_custom_columns');
@@ -207,20 +173,20 @@ if ($post_type && $meta_keys) {
     add_action('pre_get_posts', 'custom_column_orderby');
 }
 
-
-$uncheck_keys = get_option('sc_unselected_meta_keys'); // Array of meta keys to be removed
-
-// Hook to remove custom columns based on unselected meta keys
+// Remove custom columns based on unselected meta keys
+$uncheck_keys = get_option('sc_unselected_meta_keys');
 add_filter("manage_{$post_type}_posts_columns", function($columns) use ($uncheck_keys) {
-    foreach ($uncheck_keys as $key) {
-        if (isset($columns[$key])) {
-            unset($columns[$key]);
+    if ($uncheck_keys) {
+        foreach ($uncheck_keys as $key) {
+            if (isset($columns[$key])) {
+                unset($columns[$key]);
+            }
         }
     }
     return $columns;
 });
 
-// Optionally, you may need to refresh the admin page to reflect the changes immediately
+// Refresh the admin page to reflect changes
 add_action('admin_init', function() {
     $post_type = get_option('sc_selected_post_type');
     $screen = get_current_screen();
@@ -231,6 +197,4 @@ add_action('admin_init', function() {
         exit;
     }
 });
-
-
 ?>

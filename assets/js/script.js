@@ -1,6 +1,6 @@
 jQuery(document).ready(function($) {
     $('#loader').hide(); 
-       
+     
     // on change event
     $('#post_type').on('change', function() {
         var postType = $(this).val();
@@ -18,6 +18,7 @@ jQuery(document).ready(function($) {
                 success: function(response) {
                     $('#meta-fields').show();
                     $('#meta-fields').html(response);
+                    $('#meta-fields').prepend('<input id="check_all" type="checkbox" name="check_all" value="All"> All<br><br>');
                 },
                 complete: function() {
                     $('#loader').hide(); // Hide the loader when the request is complete
@@ -27,7 +28,7 @@ jQuery(document).ready(function($) {
             $('#meta-fields').hide();
         }
     });
-
+    
     // on form submit even with ajax call function
     $('#sc-meta-fields-form').on('submit', function(e) {
         e.preventDefault();
@@ -60,14 +61,21 @@ jQuery(document).ready(function($) {
                 if (response.status === 'success') {
                     $('#sc-meta-fields-form')[0].reset();
                     $('#meta-fields').hide();
-                    console.log('Successfully meta added as column.');
-                    //alert('Submitted data Successfully!');
-                    location.reload();
+                    Swal.fire({
+                        html: '<h3 class="text-success">Success Modify Column.</h3>',
+                        icon: 'success'
+                    }); 
                 } else {
                     console.log(response.message);
                 }
             }
         });
+    });
+
+    // Checkbox event for #check_all
+    $(document).on('change', '#check_all', function() {
+        var isChecked = $(this).prop('checked');
+        $('input[name="meta_keys[]"]').prop('checked', isChecked);
     });
 });
 
