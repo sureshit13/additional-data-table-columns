@@ -1,5 +1,4 @@
-<?php
-
+<?php 
 // Add a custom menu to the admin
 function sc_add_admin_menu() {
     add_menu_page(
@@ -17,7 +16,6 @@ add_action('admin_menu', 'sc_add_admin_menu');
 // Display the admin page
 function sc_display_admin_page() {
     ?>
-    <style type="text/css"></style>
     <div class="wrap">
         <form id="sc-meta-fields-form" method="post" action="">
             <?php wp_nonce_field('sc-meta-fields-nonce', 'sc-meta-fields-nonce'); ?>
@@ -32,10 +30,11 @@ function sc_display_admin_page() {
                 ?>
             </select>
             <div id="loader"></div>
-            <div id="meta-fields" class="sc-meta-fields"></div>
+            <div id="meta-fields" class="sc-meta-fields new"></div>
             <input type="submit" name="submit" value="Set Meta Fields Column" class="sc-submit-button">
         </form>
     </div>
+    
     <?php
 }
 
@@ -53,10 +52,14 @@ function sc_get_meta_fields() {
                 if ($meta_keys) {
                     // Define default WordPress meta keys
                     $default_meta_keys = array('_edit_lock', '_edit_last', '_thumbnail_id', '_wp_page_template', '_wp_old_slug', '_wp_trash_meta_status', '_wp_trash_meta_time');
+                    $unique_meta_keys = array_unique($meta_keys);
 
-                    foreach ($meta_keys as $meta_key) {
+                    foreach ($unique_meta_keys as $meta_key) {
                         if (!in_array($meta_key, $default_meta_keys)) {
-                            $output .= '<input class="sc-meta-fields-checkbox" type="checkbox" name="meta_keys[]" value="' . esc_attr($meta_key) . '">' . esc_html(transform_meta_field_name($meta_key)) . '</br></br>';
+                            $output .= '<div class="form-group">
+                                            <input class="sc-meta-fields-checkbox" type="checkbox" id="' . esc_attr($meta_key) . '" name="meta_keys[]" value="' . esc_attr($meta_key) . '">
+                                            <label for="' . esc_attr($meta_key) . '">' . esc_html(transform_meta_field_name($meta_key)) . '</label>
+                                        </div>';
                         }
                     }
                 } else {
@@ -67,10 +70,18 @@ function sc_get_meta_fields() {
             }
         } else {
             $pages_custom_meta_fields = get_all_custom_meta_fields_for_pages();
+            $unique_meta_keys = array();
+
             foreach ($pages_custom_meta_fields as $page_id => $meta_fields) {
                 foreach ($meta_fields as $meta_key => $meta_value) {
-                    $meta_value = is_array($meta_value) ? implode(', ', $meta_value) : $meta_value;
-                    $output .= '<input class="sc-meta-fields-checkbox" type="checkbox" name="meta_keys[]" value="' . esc_attr($meta_key) . '">' . esc_html(transform_meta_field_name($meta_key)) . '</br></br>';
+                    if (!in_array($meta_key, $unique_meta_keys)) {
+                        $unique_meta_keys[] = $meta_key;
+                        $meta_value = is_array($meta_value) ? implode(', ', $meta_value) : $meta_value;
+                        $output .= '<div class="form-group">
+                                        <input class="sc-meta-fields-checkbox" type="checkbox" id="' . esc_attr($meta_key) . '" name="meta_keys[]" value="' . esc_attr($meta_key) . '">
+                                        <label for="' . esc_attr($meta_key) . '">' . esc_html(transform_meta_field_name($meta_key)) . '</label>
+                                    </div>';
+                    }
                 }
             }
         }
@@ -104,97 +115,93 @@ function sc_get_form_data() {
     if (isset($_POST['post_type'])) {
         $post_type = sanitize_text_field($_POST['post_type']);
         $meta_keys = isset($_POST['meta_keys']) ? array_map('sanitize_text_field', $_POST['meta_keys']) : array();
-        $uncheck_meta_keys = isset($_POST['uncheck_meta_keys']) ? array_map('sanitize_text_field', $_POST['uncheck_meta_keys']) : array();
 
-        update_option('sc_selected_post_type', $post_type);
-        update_option('sc_selected_meta_keys', $meta_keys);
-        update_option('sc_unselected_meta_keys', $uncheck_meta_keys);
-        
-        echo json_encode(['status' => 'success', 'message' => 'Settings saved successfully.']);  
+        $all_columns = get_option('sc_all_selected_meta_keys', []);
+        $all_columns[$post_type] = array_unique($meta_keys);
+
+        update_option('sc_all_selected_meta_keys', $all_columns);
+
+        echo json_encode(['status' => 'success', 'message' => 'Settings saved successfully.', 'posttype' =>$post_type]);  
     }
     wp_die();
 }
 add_action('wp_ajax_sc_get_form_data', 'sc_get_form_data');
 add_action('wp_ajax_nopriv_sc_get_form_data', 'sc_get_form_data');
 
-// Add custom columns
-function add_custom_columns($columns) {
-    $meta_keys = get_option('sc_selected_meta_keys');
-    if ($meta_keys) {
-        foreach ($meta_keys as $key) {
-            $columns[$key] = ucfirst(str_replace('_', ' ', $key));
+// Hook to manage custom columns for the selected post type
+function sc_manage_custom_columns($columns) {
+    global $post_type;
+    $all_columns = get_option('sc_all_selected_meta_keys', []);
+    
+    if (isset($all_columns[$post_type])) {
+        $meta_keys = $all_columns[$post_type];
+        
+        // Remove all existing custom columns added by this plugin
+        foreach ($columns as $key => $value) {
+            if (strpos($key, 'sc_custom_column_') === 0) {
+                unset($columns[$key]);
+            }
+        }
+
+        // Add new custom columns based on the selected meta keys
+        $unique_meta_keys = array_unique($meta_keys);
+        foreach ($unique_meta_keys as $meta_key) {
+            $columns['sc_custom_column_' . $meta_key] = ucfirst(str_replace('_', ' ', $meta_key));
         }
     }
+
     return $columns;
 }
 
-// Populate custom columns
-function populate_custom_columns($column, $post_id) {
-    $meta_keys = get_option('sc_selected_meta_keys');
-    if ($meta_keys && in_array($column, $meta_keys)) {
-        $meta_value = get_post_meta($post_id, $column, true);
+// Hook to display content for custom columns
+function sc_custom_column_content($column_name, $post_id) {
+    if (strpos($column_name, 'sc_custom_column_') === 0) {
+        $meta_key = str_replace('sc_custom_column_', '', $column_name);
+        $meta_value = get_post_meta($post_id, $meta_key, true);
         echo esc_html($meta_value);
     }
 }
 
-// Make custom columns sortable
-function make_custom_columns_sortable($columns) {
-    $meta_keys = get_option('sc_selected_meta_keys');
-    if ($meta_keys) {
-        foreach ($meta_keys as $key) {
-            $columns[$key] = $key;
+
+function sc_manage_sortable_columns($sortable_columns) {
+    $all_columns = get_option('sc_all_selected_meta_keys', []);
+    $post_types = get_post_types(array('public' => true), 'names');
+
+    foreach ($post_types as $post_type) {
+        if (isset($all_columns[$post_type])) {
+            $meta_keys = $all_columns[$post_type];
+            foreach ($meta_keys as $meta_key) {
+                $sortable_columns['sc_custom_column_' . $meta_key] = $meta_key;
+            }
         }
     }
-    return $columns;
+
+    return $sortable_columns;
 }
 
-// Sort custom columns
-function custom_column_orderby($query) {
+function sc_custom_column_sort($query) {
     if (!is_admin() || !$query->is_main_query()) {
         return;
     }
 
-    $meta_keys = get_option('sc_selected_meta_keys');
     $orderby = $query->get('orderby');
 
-    if ($meta_keys && in_array($orderby, $meta_keys)) {
-        $query->set('meta_key', $orderby);
+    if (strpos($orderby, 'sc_custom_column_') === 0) {
+        $meta_key = substr($orderby, strlen('sc_custom_column_'));
+        $query->set('meta_key', $meta_key);
         $query->set('orderby', 'meta_value');
     }
 }
 
-// Add hooks for custom columns based on post type
-$post_type = get_option('sc_selected_post_type');
-$meta_keys = get_option('sc_selected_meta_keys');
-if ($post_type && $meta_keys) {
-    add_filter("manage_{$post_type}_posts_columns", 'add_custom_columns');
-    add_action("manage_{$post_type}_posts_custom_column", 'populate_custom_columns', 10, 2);
-    add_filter("manage_edit-{$post_type}_sortable_columns", 'make_custom_columns_sortable');
-    add_action('pre_get_posts', 'custom_column_orderby');
-}
 
-// Remove custom columns based on unselected meta keys
-$uncheck_keys = get_option('sc_unselected_meta_keys');
-add_filter("manage_{$post_type}_posts_columns", function($columns) use ($uncheck_keys) {
-    if ($uncheck_keys) {
-        foreach ($uncheck_keys as $key) {
-            if (isset($columns[$key])) {
-                unset($columns[$key]);
-            }
-        }
-    }
-    return $columns;
-});
-
-// Refresh the admin page to reflect changes
-add_action('admin_init', function() {
-    $post_type = get_option('sc_selected_post_type');
-    $screen = get_current_screen();
+// Apply custom columns only for post types with selected columns
+function sc_apply_custom_columns() {
+    $all_columns = get_option('sc_all_selected_meta_keys', []);
     
-    if ($screen && $screen->id === "edit-{$post_type}") {
-        $location = admin_url("edit.php?post_type={$post_type}");
-        wp_redirect($location);
-        exit;
+    foreach ($all_columns as $post_type => $meta_keys) {
+        add_filter('manage_'. $post_type .'_posts_columns', 'sc_manage_custom_columns');
+        add_action('manage_'. $post_type .'_posts_custom_column', 'sc_custom_column_content', 10, 2);
+        add_filter('manage_edit-'. $post_type .'_sortable_columns', 'sc_manage_sortable_columns');
     }
-});
-?>
+}
+add_action('admin_init', 'sc_apply_custom_columns');

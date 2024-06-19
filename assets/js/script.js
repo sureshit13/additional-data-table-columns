@@ -18,7 +18,7 @@ jQuery(document).ready(function($) {
                 success: function(response) {
                     $('#meta-fields').show();
                     $('#meta-fields').html(response);
-                    $('#meta-fields').prepend('<input id="check_all" type="checkbox" name="check_all" value="All"> All<br><br>');
+                    $('#meta-fields').prepend('<div class="form-group"><input type="checkbox" id="check_all" name="check_all" value="check_all"><label for="check_all">All</label></div>');
                 },
                 complete: function() {
                     $('#loader').hide(); // Hide the loader when the request is complete
@@ -57,12 +57,16 @@ jQuery(document).ready(function($) {
                 uncheck_meta_keys:uncheckedMetaKeys
             },
             success: function(response) {
+                
                 response = JSON.parse(response);
+                const str = response.posttype;
+                const modStr = str[0].toUpperCase() + str.slice(1);
+
                 if (response.status === 'success') {
                     $('#sc-meta-fields-form')[0].reset();
                     $('#meta-fields').hide();
                     Swal.fire({
-                        html: '<h3 class="text-success">Success Modify Column.</h3>',
+                        html: '<h3 class="text-success">Success added Selected Meta field As Custom Column of '+modStr+'.</h3>',
                         icon: 'success'
                     }); 
                 } else {
